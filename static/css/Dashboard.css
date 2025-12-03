@@ -1,0 +1,993 @@
+/**
+ * NIDS Dashboard Styles - Professional Minimalist Sidebar Layout
+ * Enhanced with better typography, spacing, and visual hierarchy
+ */
+
+/* Global Styles */
+:root {
+    --bg-dark: #0f1419;
+    --bg-darker: #0a0e14;
+    --bg-card: #151b28;
+    --border-color: #1f2937;
+    --text-primary: #e5e7eb;
+    --text-secondary: #9ca3af;
+    --accent: #3b82f6;
+    --success: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --info: #06b6d4;
+    --sidebar-width: 240px;
+    --sidebar-collapsed: 70px;
+    --header-height: 64px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr;
+    grid-template-rows: var(--header-height) 1fr;
+}
+
+body.sidebar-collapsed {
+    grid-template-columns: var(--sidebar-collapsed) 1fr;
+}
+
+/* ============================================================================
+   SCROLLBAR STYLING
+   ============================================================================ */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-darker);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #374151;
+}
+
+/* ============================================================================
+   SIDEBAR NAVIGATION
+   ============================================================================ */
+
+.sidebar {
+    position: relative;
+    grid-column: 1;
+    grid-row: 1 / 3;
+    height: 100vh;
+    width: var(--sidebar-width);
+    background-color: var(--bg-darker);
+    border-right: 1px solid var(--border-color);
+    padding: 0;
+    z-index: 1030;
+    overflow-y: auto;
+    transition: width 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar.collapsed {
+    width: var(--sidebar-collapsed);
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    min-height: var(--header-height);
+    gap: 0.5rem;
+}
+
+.sidebar-header h6 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent);
+    white-space: nowrap;
+    margin: 0;
+}
+
+.sidebar.collapsed .sidebar-header h6 {
+    display: none;
+}
+
+.sidebar-header .btn-link {
+    padding: 0.25rem;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.sidebar-header .btn-link:hover {
+    color: var(--accent);
+    transform: scale(1.1);
+}
+
+.sidebar-nav {
+    flex: 1;
+    padding: 1rem 0;
+    overflow-y: auto;
+}
+
+.sidebar-nav .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    position: relative;
+}
+
+.sidebar-nav .nav-link i {
+    font-size: 1.1rem;
+    min-width: 1.5rem;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.sidebar-nav .nav-link span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar.collapsed .nav-link span {
+    display: none;
+}
+
+.sidebar-nav .nav-link:hover {
+    background-color: rgba(59, 130, 246, 0.1);
+    color: var(--accent);
+    padding-left: 1.25rem;
+}
+
+.sidebar-nav .nav-link.active {
+    background-color: rgba(59, 130, 246, 0.15);
+    color: var(--accent);
+    border-right: 3px solid var(--accent);
+}
+
+.sidebar-nav .badge-notification {
+    margin-left: auto;
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    flex-shrink: 0;
+}
+
+.sidebar.collapsed .badge-notification {
+    position: absolute;
+    right: -8px;
+    top: 0;
+}
+
+/* ============================================================================
+   TOP HEADER BAR
+   ============================================================================ */
+
+.top-header {
+    position: relative;
+    grid-column: 2;
+    grid-row: 1;
+    height: var(--header-height);
+    background-color: var(--bg-darker);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2rem;
+    z-index: 1020;
+    transition: all 0.3s ease;
+}
+
+.sidebar.collapsed ~ .top-header {
+    left: var(--sidebar-collapsed);
+}
+
+.header-left, .header-right {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.header-left h4 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.header-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.header-right small {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.btn-icon {
+    color: var(--text-secondary);
+    padding: 0.5rem;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+}
+
+.btn-icon:hover {
+    color: var(--accent);
+    background-color: rgba(59, 130, 246, 0.1);
+    border-radius: 6px;
+}
+
+/* ============================================================================
+   MAIN CONTENT AREA
+   ============================================================================ */
+
+.main-content {
+    position: relative;
+    grid-column: 2;
+    grid-row: 2;
+    background-color: var(--bg-dark);
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 10;
+}
+
+.content-wrapper {
+    padding: 2rem;
+    max-width: 100%;
+    width: 100%;
+    display: block;
+}
+
+/* ============================================================================
+   CONTROL HEADER (Compact)
+   ============================================================================ */
+
+.control-header {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.control-left {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.interface-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 200px;
+}
+
+.interface-selector .form-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.interface-selector .form-select {
+    background-color: var(--bg-darker);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+}
+
+.interface-selector .form-select:focus {
+    background-color: var(--bg-card);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    color: var(--text-primary);
+}
+
+.badge-status {
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+    background-color: #6b7280 !important;
+    border-radius: 6px;
+    white-space: nowrap;
+    animation: pulse-status 1.5s ease-in-out infinite;
+}
+
+.badge-status.running {
+    background-color: var(--success) !important;
+    animation: pulse-status 2s ease-in-out infinite;
+}
+
+@keyframes pulse-status {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
+.control-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.control-actions .btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    border-radius: 6px;
+    border: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.control-actions .btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.control-actions .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-success {
+    background-color: var(--success);
+    color: white;
+}
+
+.btn-danger {
+    background-color: var(--danger);
+    color: white;
+}
+
+.btn-warning {
+    background-color: var(--warning);
+    color: #000;
+}
+
+/* ============================================================================
+   METRICS GRID (4 columns)
+   ============================================================================ */
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+}
+
+.metric-card {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(59, 130, 246, 0.02));
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 1.5rem;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+}
+
+.metric-card:hover {
+    border-color: var(--accent);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05));
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.metric-card.alert-card::before {
+    background: linear-gradient(90deg, var(--danger), transparent);
+}
+
+.metric-card.alert-card:hover {
+    border-color: var(--danger);
+}
+
+.metric-card.success-card::before {
+    background: linear-gradient(90deg, var(--success), transparent);
+}
+
+.metric-card.success-card:hover {
+    border-color: var(--success);
+}
+
+.metric-card.info-card::before {
+    background: linear-gradient(90deg, var(--info), transparent);
+}
+
+.metric-card.info-card:hover {
+    border-color: var(--info);
+}
+
+.metric-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1;
+    margin-bottom: 0.75rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.metric-label {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.75rem;
+}
+
+.metric-icon {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    font-size: 2rem;
+    color: var(--accent);
+    opacity: 0.2;
+}
+
+.metric-card.alert-card .metric-icon {
+    color: var(--danger);
+}
+
+.metric-card.success-card .metric-icon {
+    color: var(--success);
+}
+
+.metric-card.info-card .metric-icon {
+    color: var(--info);
+}
+
+/* ============================================================================
+   CHARTS GRID (2 columns)
+   ============================================================================ */
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+}
+
+.chart-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.chart-card:hover {
+    border-color: var(--border-color);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.chart-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+.chart-header h6 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.chart-card canvas {
+    padding: 1rem;
+    max-height: 320px !important;
+}
+
+/* Force Chart.js legend text to be white */
+.chart-card canvas * {
+    color: #ffffff !important;
+}
+
+/* ============================================================================
+   TRAFFIC TABLE (Live Traffic Analysis)
+   ============================================================================ */
+
+.traffic-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 500px);
+}
+
+.traffic-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    background-color: rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.traffic-header .header-left {
+    flex: 1;
+}
+
+.traffic-header h6 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    white-space: nowrap;
+}
+
+.traffic-header .header-right {
+    display: flex;
+    gap: 0.75rem;
+    flex-shrink: 0;
+}
+
+.traffic-header .btn {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+}
+
+.table-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+.traffic-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.traffic-table thead {
+    position: sticky;
+    top: 0;
+    background-color: rgba(0, 0, 0, 0.3);
+    border-bottom: 2px solid var(--border-color);
+    z-index: 10;
+}
+
+.traffic-table th {
+    padding: 1rem 0.75rem;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    border-right: 1px solid var(--border-color);
+}
+
+.traffic-table th:last-child {
+    border-right: none;
+}
+
+.traffic-table tbody tr {
+    border-bottom: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+}
+
+.traffic-table tbody tr:hover {
+    background-color: rgba(59, 130, 246, 0.08);
+}
+
+.traffic-table td {
+    padding: 1rem 0.75rem;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    border-right: 1px solid var(--border-color);
+    word-break: break-word;
+}
+
+.traffic-table td:last-child {
+    border-right: none;
+}
+
+.traffic-table code {
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: var(--info);
+}
+
+.traffic-table .badge {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.badge-danger {
+    background-color: var(--danger) !important;
+    color: white;
+}
+
+.badge-success {
+    background-color: var(--success) !important;
+    color: white;
+}
+
+.badge-warning {
+    background-color: var(--warning) !important;
+    color: #000;
+}
+
+/* Empty state */
+.traffic-table tbody tr td {
+    text-align: center;
+}
+
+.text-muted {
+    color: var(--text-secondary) !important;
+}
+
+/* ============================================================================
+   ALERT ROW BACKGROUNDS (Color-coded by severity/type)
+   ============================================================================ */
+
+.alert-row-benign {
+    background-color: rgba(16, 185, 129, 0.06) !important;
+}
+
+.alert-row-benign:hover {
+    background-color: rgba(16, 185, 129, 0.12) !important;
+}
+
+.alert-row-critical {
+    background-color: rgba(239, 68, 68, 0.06) !important;
+}
+
+.alert-row-critical:hover {
+    background-color: rgba(239, 68, 68, 0.12) !important;
+}
+
+.alert-row-high {
+    background-color: rgba(249, 115, 22, 0.06) !important;
+}
+
+.alert-row-high:hover {
+    background-color: rgba(249, 115, 22, 0.12) !important;
+}
+
+.alert-row-medium {
+    background-color: rgba(245, 158, 11, 0.06) !important;
+}
+
+.alert-row-medium:hover {
+    background-color: rgba(245, 158, 11, 0.12) !important;
+}
+
+.alert-row-low {
+    background-color: rgba(107, 114, 128, 0.06) !important;
+}
+
+.alert-row-low:hover {
+    background-color: rgba(107, 114, 128, 0.12) !important;
+}
+
+/* ============================================================================
+   MODAL STYLING
+   ============================================================================ */
+
+.modal-content {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.modal-header {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--border-color);
+    padding: 1.25rem;
+}
+
+.modal-header .modal-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-body {
+    background-color: var(--bg-darker);
+    padding: 1.5rem;
+}
+
+/* Professional modal styling */
+.modal-body h6 {
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: 0.025em;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.modal-body .list-group-item {
+    background-color: rgba(255, 255, 255, 0.02) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    padding: 0.75rem 1rem;
+}
+
+.modal-body .list-group-item small {
+    color: #9ca3af;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.modal-body .list-group-item p {
+    color: #f3f4f6;
+    font-weight: 500;
+}
+
+.modal-body code {
+    background-color: rgba(59, 130, 246, 0.1);
+    color: #93c5fd;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.modal-body .table-dark {
+    background-color: transparent;
+}
+
+.modal-body .table-dark th {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #d1d5db;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 0.75rem;
+}
+
+.modal-body .table-dark td {
+    border-color: rgba(255, 255, 255, 0.05);
+    color: #f3f4f6;
+    font-size: 0.85rem;
+    padding: 0.75rem;
+}
+
+.modal-body .table-dark td:first-child {
+    color: #93c5fd;
+    font-weight: 600;
+}
+
+.modal-footer {
+    background-color: rgba(0, 0, 0, 0.1);
+    border-top: 1px solid var(--border-color);
+    padding: 1rem 1.25rem;
+}
+
+.btn-close-white {
+    filter: brightness(1.2);
+}
+
+/* ============================================================================
+   RESPONSIVE DESIGN
+   ============================================================================ */
+
+@media (max-width: 1400px) {
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    :root {
+        --sidebar-width: 70px;
+    }
+    
+    .sidebar {
+        width: var(--sidebar-width) !important;
+    }
+    
+    .sidebar-header h6,
+    .nav-link span {
+        display: none !important;
+    }
+    
+    .top-header {
+        left: var(--sidebar-width);
+        padding: 0 1rem;
+    }
+    
+    .header-left h4 {
+        font-size: 1rem;
+    }
+    
+    .main-content {
+        left: var(--sidebar-width);
+    }
+    
+    .content-wrapper {
+        padding: 1rem;
+    }
+    
+    .control-header {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .control-left {
+        flex-direction: column;
+        width: 100%;
+        gap: 1rem;
+    }
+    
+    .interface-selector {
+        width: 100%;
+        min-width: auto;
+    }
+    
+    .control-actions {
+        width: 100%;
+    }
+    
+    .metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+    
+    .metric-value {
+        font-size: 1.75rem;
+    }
+    
+    .charts-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .chart-card canvas {
+        max-height: 250px !important;
+        padding: 0.75rem;
+    }
+    
+    .traffic-card {
+        max-height: calc(100vh - 350px);
+    }
+    
+    .traffic-table {
+        font-size: 0.8rem;
+    }
+    
+    .traffic-table th,
+    .traffic-table td {
+        padding: 0.6rem 0.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .metric-value {
+        font-size: 1.5rem;
+    }
+    
+    .control-actions {
+        flex-direction: column;
+    }
+    
+    .control-actions .btn {
+        width: 100%;
+    }
+    
+    .traffic-table {
+        font-size: 0.75rem;
+    }
+    
+    .traffic-table th,
+    .traffic-table td {
+        padding: 0.5rem 0.25rem;
+    }
+    
+    .traffic-header h6 {
+        font-size: 0.85rem;
+    }
+}
+
+/* ============================================================================
+   UTILITY CLASSES
+   ============================================================================ */
+
+.text-center {
+    text-align: center;
+}
+
+.text-muted {
+    color: var(--text-secondary) !important;
+}
+
+.opacity-50 {
+    opacity: 0.5;
+}
+
+.opacity-75 {
+    opacity: 0.75;
+}
+
+.mb-0 {
+    margin-bottom: 0;
+}
+
+.mb-1 { margin-bottom: 0.25rem; }
+.mb-2 { margin-bottom: 0.5rem; }
+.mb-3 { margin-bottom: 1rem; }
+.mb-4 { margin-bottom: 1.5rem; }
+
+.ms-1 { margin-left: 0.25rem; }
+.ms-2 { margin-left: 0.5rem; }
+.ms-3 { margin-left: 1rem; }
+
+.py-5 {
+    padding-top: 3rem;
+    padding-bottom: 3rem;
+}
