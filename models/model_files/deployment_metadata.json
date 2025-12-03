@@ -1,0 +1,44 @@
+{
+  "project": "Enhanced Predictive Classification of Cybersecurity Threats",
+  "student": "RASSYIDZ - UniKL MIIT",
+  "dataset": "NF-UNSW-NB15-v3",
+  "features": 34,
+  "classes": [
+    "Analysis",
+    "Backdoor",
+    "Benign",
+    "DoS",
+    "Exploits",
+    "Fuzzers",
+    "Generic",
+    "Reconnaissance",
+    "Shellcode",
+    "Worms"
+  ],
+  "binary": {
+    "xgboost": {
+      "acc": 0.9999532036365029,
+      "f1": 0.9995693873556469,
+      "time": 13.637609958648682
+    },
+    "rf": {
+      "acc": 0.9999340596696177,
+      "f1": 0.9993933107618843,
+      "time": 147.69197010993958
+    },
+    "winner": "XGBoost"
+  },
+  "multiclass": {
+    "xgboost": {
+      "acc": 0.9868821284687804,
+      "f1": 0.9874159582174417,
+      "time": 516.1101236343384
+    },
+    "rf": {
+      "acc": 0.9865800792134808,
+      "f1": 0.9872034169203441,
+      "time": 4516.098707675934
+    },
+    "winner": "XGBoost"
+  }
+}
