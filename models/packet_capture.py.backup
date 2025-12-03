@@ -1,0 +1,623 @@
+"""
+Packet Capture Engine
+Captures network packets using Scapy and aggregates them into flows
+"""
+
+import threading
+import queue
+import time
+import platform
+from collections import defaultdict
+from datetime import datetime
+
+try:
+    from scapy.all import sniff, IP, TCP, UDP, ICMP, get_if_list
+    SCAPY_AVAILABLE = True
+except ImportError:
+    SCAPY_AVAILABLE = False
+    print("Scapy not installed. Install with: pip install scapy")
+
+from models.feature_extraction import FlowRecord, FeatureExtractor
+from models.ml_predictor import MLPredictor
+from utils.config import Config
+from utils.logger import nids_logger, log_packet_capture, log_error
+
+
+class PacketCaptureEngine:
+    """Captures and processes network packets in real-time"""
+    
+    def __init__(self, interface='eth0', on_prediction_callback=None, filter_str="ip"):
+        """
+        Initialize packet capture engine
+        
+        Args:
+            interface: Network interface to capture from (e.g., 'eth0', 'wlan0')
+            on_prediction_callback: Callback function for predictions
+            filter_str: BPF filter string for packet capture
+        """
+        if not SCAPY_AVAILABLE:
+            raise ImportError("Scapy is required for packet capture")
+        
+        # Convert interface name for Windows (replace wlan0/eth0 with actual interface)
+        self.interface = self._get_valid_interface(interface)
+        self.filter_str = filter_str
+        self.callback = on_prediction_callback
+        
+        # Packet queue and flow tracking
+        self.packet_queue = queue.Queue(maxsize=Config.PACKET_QUEUE_SIZE)
+        self.flow_tracker = defaultdict(lambda: None)
+        self.flow_lock = threading.Lock()
+        
+        # State
+        self.is_running = False
+        self.capture_thread = None
+        self.processing_thread = None
+        
+        # Statistics
+        self.packet_count = 0
+        self.flow_count = 0
+        self.start_time = None
+        self.dropped_packets = 0
+        
+        # ML Predictor
+        self.predictor = MLPredictor()
+        self.predictor.load_models()
+        
+        log_packet_capture(f"Packet capture engine initialized on interface {self.interface}")
+    
+    def start_capture(self):
+        """Start capturing packets"""
+        if self.is_running:
+            log_packet_capture("Capture already running")
+            return
+        
+        self.is_running = True
+        self.start_time = time.time()
+        self.packet_count = 0
+        
+        log_packet_capture(f"Starting packet capture on {self.interface}...")
+        
+        # Start processing thread
+        self.processing_thread = threading.Thread(target=self._process_packets, daemon=True)
+        self.processing_thread.start()
+        
+        # Start capture thread
+        self.capture_thread = threading.Thread(target=self._capture_packets, daemon=True)
+        self.capture_thread.start()
+        
+        log_packet_capture("Packet capture started successfully")
+    
+    def stop_capture(self):
+        """Stop capturing packets"""
+        if not self.is_running:
+            return
+        
+        log_packet_capture("Stopping packet capture...")
+        self.is_running = False
+        
+        # Wait for threads to finish
+        if self.capture_thread:
+            self.capture_thread.join(timeout=5)
+        if self.processing_thread:
+            self.processing_thread.join(timeout=5)
+        
+        log_packet_capture(f"Packet capture stopped. Total packets: {self.packet_count}")
+    
+    def _get_valid_interface(self, requested_interface):
+        """Get a valid interface name for the current OS"""
+        try:
+            available_interfaces = get_if_list()
+            
+            # If requested interface is available, use it
+            if requested_interface in available_interfaces:
+                return requested_interface
+            
+            # Windows: interface names are different, try to find a suitable one
+            if platform.system() == 'Windows':
+                # Try common Windows interface names
+                for iface in available_interfaces:
+                    if iface and not iface.startswith('lo') and not iface.startswith('{'):
+                        log_packet_capture(f"Using interface: {iface}")
+                        return iface
+                # If no suitable interface found, use the first available
+                if available_interfaces:
+                    return available_interfaces[0]
+            else:
+                # Linux/Mac: if wlan0/eth0 not found, use first available
+                if available_interfaces:
+                    return available_interfaces[0]
+            
+            log_error(f"No valid interface found. Available: {available_interfaces}", component='PacketCapture')
+            return requested_interface
+        except Exception as e:
+            log_error(f"Error detecting interface: {str(e)}", component='PacketCapture')
+            return requested_interface
+    
+    def _capture_packets(self):
+        """Capture packets using Scapy (runs in separate thread)"""
+        try:
+            log_packet_capture(f"Sniffing on {self.interface} with filter '{self.filter_str}'")
+            
+            sniff(
+                iface=self.interface,
+                prn=self._packet_handler,
+                store=False,
+                filter=self.filter_str,
+                stop_filter=lambda x: not self.is_running
+            )
+            
+        except PermissionError:
+            log_error(
+                "Permission denied. Run with sudo/administrator privileges",
+                component='PacketCapture'
+            )
+        except OSError as e:
+            if "filename" in str(e) or "syntax" in str(e).lower():
+                log_error(
+                    f"Invalid network interface. Make sure you have network drivers installed and Npcap/WinPcap configured. Error: {str(e)}",
+                    component='PacketCapture'
+                )
+            else:
+                log_error(f"Capture error: {str(e)}", component='PacketCapture')
+        except Exception as e:
+            log_error(f"Capture error: {str(e)}", component='PacketCapture')
+    
+    def _packet_handler(self, packet):
+        """
+        Handle each captured packet
+        
+        Args:
+            packet: Scapy packet object
+        """
+        try:
+            # Only process IP packets
+            if not packet.haslayer(IP):
+                return
+            
+            self.packet_count += 1
+            
+            # Add to queue for processing
+            try:
+                self.packet_queue.put((packet, time.time()), block=False)
+            except queue.Full:
+                self.dropped_packets += 1
+                if self.dropped_packets % 100 == 0:
+                    log_packet_capture(f"Warning: Dropped {self.dropped_packets} packets (queue full)")
+        
+        except Exception as e:
+            log_error(f"Packet handler error: {str(e)}", component='PacketCapture')
+    
+    def _process_packets(self):
+        """Process packets from queue and aggregate into flows"""
+        log_packet_capture("Packet processing thread started")
+        
+        while self.is_running:
+            try:
+                # Get packet from queue with timeout
+                packet, timestamp = self.packet_queue.get(timeout=1)
+                
+                # Extract flow key
+                flow_key = self._extract_flow_key(packet)
+                if not flow_key:
+                    continue
+                
+                # Get or create flow record
+                with self.flow_lock:
+                    if self.flow_tracker[flow_key] is None:
+                        self.flow_tracker[flow_key] = FlowRecord(flow_key)
+                        self.flow_count += 1
+                
+                flow_record = self.flow_tracker[flow_key]
+                
+                # Determine packet direction
+                direction = self._determine_direction(packet, flow_key)
+                
+                # Add packet to flow
+                flow_record.add_packet(packet, direction, timestamp)
+                
+                # Check if flow is ready for prediction
+                if flow_record.is_ready_for_prediction(
+                    timeout=Config.FLOW_TIMEOUT,
+                    max_packets=Config.FLOW_MAX_PACKETS
+                ):
+                    self._predict_flow(flow_key, flow_record)
+                    
+                    # Remove flow from tracker
+                    with self.flow_lock:
+                        del self.flow_tracker[flow_key]
+                
+            except queue.Empty:
+                # Check for timed-out flows
+                self._check_timeout_flows()
+                continue
+            
+            except Exception as e:
+                log_error(f"Packet processing error: {str(e)}", component='PacketCapture')
+        
+        log_packet_capture("Packet processing thread stopped")
+    
+    def _extract_flow_key(self, packet):
+        """
+        Extract flow key from packet (5-tuple)
+        
+        Returns:
+            Tuple: (src_ip, dst_ip, src_port, dst_port, protocol)
+        """
+        try:
+            ip_layer = packet[IP]
+            src_ip = ip_layer.src
+            dst_ip = ip_layer.dst
+            
+            # Extract ports and protocol
+            if packet.haslayer(TCP):
+                tcp_layer = packet[TCP]
+                src_port = tcp_layer.sport
+                dst_port = tcp_layer.dport
+                protocol = 'TCP'
+            elif packet.haslayer(UDP):
+                udp_layer = packet[UDP]
+                src_port = udp_layer.sport
+                dst_port = udp_layer.dport
+                protocol = 'UDP'
+            elif packet.haslayer(ICMP):
+                src_port = 0
+                dst_port = 0
+                protocol = 'ICMP'
+            else:
+                src_port = 0
+                dst_port = 0
+                protocol = 'OTHER'
+            
+            # Create bidirectional flow key (sort to ensure consistency)
+            if (src_ip, src_port) < (dst_ip, dst_port):
+                return (src_ip, dst_ip, src_port, dst_port, protocol)
+            else:
+                return (dst_ip, src_ip, dst_port, src_port, protocol)
+        
+        except Exception as e:
+            log_error(f"Flow key extraction error: {str(e)}", component='PacketCapture')
+            return None
+    
+    def _determine_direction(self, packet, flow_key):
+        """Determine if packet is forward or backward in flow"""
+        try:
+            ip_layer = packet[IP]
+            src_ip = ip_layer.src
+            
+            # Compare with flow key's source IP
+            if src_ip == flow_key[0]:
+                return 'forward'
+            else:
+                return 'backward'
+        except:
+            return 'forward'
+    
+    def _predict_flow(self, flow_key, flow_record):
+        """
+        Make prediction on completed flow
+        
+        Args:
+            flow_key: Flow identifier
+            flow_record: FlowRecord object
+        """
+        try:
+            # Extract features
+            features = FeatureExtractor.extract_features(flow_record)
+            
+            # Get flow info
+            flow_info = {
+                'src_ip': flow_record.src_ip,
+                'dst_ip': flow_record.dst_ip,
+                'src_port': flow_record.src_port,
+                'dst_port': flow_record.dst_port,
+                'protocol': flow_record.protocol
+            }
+            
+            # Make prediction
+            prediction = self.predictor.predict(features, flow_info)
+            
+            if prediction:
+                # Add packet summary
+                prediction['packet_summary'] = str(flow_record.get_summary())
+                
+                # Call callback for ALL predictions (attacks and benign)
+                if self.callback:
+                    self.callback(prediction)
+        
+        except Exception as e:
+            log_error(f"Flow prediction error: {str(e)}", component='PacketCapture')
+    
+    def _check_timeout_flows(self):
+        """Check for flows that have timed out and process them"""
+        try:
+            current_time = time.time()
+            timed_out_flows = []
+            
+            with self.flow_lock:
+                for flow_key, flow_record in list(self.flow_tracker.items()):
+                    if flow_record is None:
+                        continue
+                    
+                    # Check if flow has timed out
+                    if flow_record.start_time and (current_time - flow_record.start_time) > Config.FLOW_TIMEOUT:
+                        timed_out_flows.append((flow_key, flow_record))
+            
+            # Process timed out flows
+            for flow_key, flow_record in timed_out_flows:
+                self._predict_flow(flow_key, flow_record)
+                
+                # Remove from tracker
+                with self.flow_lock:
+                    if flow_key in self.flow_tracker:
+                        del self.flow_tracker[flow_key]
+        
+        except Exception as e:
+            log_error(f"Timeout check error: {str(e)}", component='PacketCapture')
+    
+    def get_packet_rate(self):
+        """Calculate packets per second"""
+        if self.start_time is None:
+            return 0
+        
+        elapsed = time.time() - self.start_time
+        if elapsed > 0:
+            return round(self.packet_count / elapsed, 2)
+        return 0
+    
+    def get_statistics(self):
+        """Get capture statistics"""
+        return {
+            'total_packets': self.packet_count,
+            'total_flows': self.flow_count,
+            'active_flows': len(self.flow_tracker),
+            'packets_per_second': self.get_packet_rate(),
+            'dropped_packets': self.dropped_packets,
+            'uptime': time.time() - self.start_time if self.start_time else 0
+        }
+
+
+class SimulatedPacketGenerator:
+    """
+    ML-Based Simulated Network Flow Generator
+    Generates realistic attack patterns with actual ML predictions
+    Useful for testing and demonstrations without network access
+    """
+    
+    def __init__(self, callback=None):
+        """Initialize ML-based packet generator"""
+        self.callback = callback
+        self.is_running = False
+        self.packet_count = 0
+        # Import ML predictor here to avoid circular imports
+        from models.ml_predictor import MLPredictor
+        self.ml_predictor = MLPredictor()
+        self.ml_predictor.load_models()
+        
+    def start(self):
+        """Start generating packets"""
+        self.is_running = True
+        self.thread = threading.Thread(target=self._generate_packets, daemon=True)
+        self.thread.start()
+        log_packet_capture("ML-based simulated packet generator started")
+    
+    def stop(self):
+        """Stop generating packets"""
+        self.is_running = False
+        if hasattr(self, 'thread'):
+            self.thread.join(timeout=5)
+        log_packet_capture("ML-based simulated packet generator stopped")
+    
+    def _generate_attack_features(self, attack_type):
+        """
+        Generate realistic 34-feature vectors based on attack type
+        Features based on UNSW-NB15 attack characteristics with increased diversity
+        """
+        import random
+        import numpy as np
+        
+        # Base feature template with random variations to increase diversity
+        features = np.zeros(Config.NUM_FEATURES)
+        
+        # Feature indices (matching Config.FEATURE_NAMES order)
+        dur_idx, proto_idx, service_idx, state_idx = 0, 1, 2, 3
+        spkts_idx, dpkts_idx, sbytes_idx, dbytes_idx = 4, 5, 6, 7
+        rate_idx, sttl_idx, dttl_idx = 8, 9, 10
+        sload_idx, dload_idx, sloss_idx, dloss_idx = 11, 12, 13, 14
+        sintpkt_idx, dintpkt_idx, sjit_idx, djit_idx = 15, 16, 17, 18
+        swin_idx, dwin_idx, stcpb_idx, dtcpb_idx = 19, 20, 21, 22
+        tcprtt_idx, synack_idx, ackdat_idx = 23, 24, 25
+        smean_idx, dmean_idx = 26, 27
+        trans_depth_idx, response_body_len_idx = 28, 29
+        ct_srv_src_idx, ct_state_ttl_idx, ct_dst_ltm_idx, ct_src_dport_ltm_idx = 30, 31, 32, 33
+        
+        # Add baseline randomness to all attacks
+        base_random_idx = random.randint(0, 3)
+        
+        if attack_type == 'DoS':
+            # DoS: Emphasis on high packet rate
+            features[dur_idx] = random.uniform(1, 120)
+            features[proto_idx] = random.choice([6, 17])
+            features[service_idx] = random.uniform(0, 14)  # Very varied
+            features[state_idx] = random.choice([2, 5, 12])
+            features[spkts_idx] = random.uniform(200, 10000)  # HIGH packets
+            features[dpkts_idx] = random.uniform(50, 5000)
+            features[sbytes_idx] = random.uniform(5000, 1000000)  # HIGH bytes
+            features[dbytes_idx] = random.uniform(1000, 500000)
+            features[rate_idx] = random.uniform(500, 10000)  # VERY HIGH rate
+            features[sttl_idx] = random.uniform(1, 128)
+            features[dttl_idx] = random.uniform(1, 128)
+            features[sload_idx] = random.uniform(1000, 50000)  # HIGH load
+            features[dload_idx] = random.uniform(500, 25000)
+            features[sloss_idx] = random.uniform(0, 0.5)
+            features[dloss_idx] = random.uniform(0, 0.5)
+            features[sintpkt_idx] = random.uniform(0.1, 1000)
+            features[dintpkt_idx] = random.uniform(0.1, 1000)
+            features[sjit_idx] = random.uniform(0, 1000)
+            features[djit_idx] = random.uniform(0, 1000)
+            features[swin_idx] = random.uniform(0, 65535)
+            features[dwin_idx] = random.uniform(0, 65535)
+            features[smean_idx] = random.uniform(100, 50000)
+            features[dmean_idx] = random.uniform(100, 50000)
+            features[ct_srv_src_idx] = random.uniform(0, 100)
+            features[ct_src_dport_ltm_idx] = random.uniform(0, 50)
+            
+        elif attack_type == 'Reconnaissance':
+            # Reconnaissance: Emphasis on many connections, low loss, varied ports
+            features[dur_idx] = random.uniform(10, 3600)
+            features[proto_idx] = random.choice([6, 17])
+            features[service_idx] = random.uniform(0, 14)  # Scan all ports
+            features[state_idx] = random.choice([2, 3])  # SYN, RST
+            features[spkts_idx] = random.uniform(5, 1000)
+            features[dpkts_idx] = random.uniform(0, 1000)
+            features[sbytes_idx] = random.uniform(10, 50000)
+            features[dbytes_idx] = random.uniform(0, 50000)
+            features[rate_idx] = random.uniform(1, 1000)
+            features[sttl_idx] = random.uniform(1, 128)
+            features[dttl_idx] = random.uniform(1, 128)
+            features[sload_idx] = random.uniform(0, 5000)
+            features[dload_idx] = random.uniform(0, 5000)
+            features[sloss_idx] = random.uniform(0, 0.2)
+            features[dloss_idx] = random.uniform(0.5, 1.0)  # High loss for non-responses
+            features[sintpkt_idx] = random.uniform(1, 5000)
+            features[dintpkt_idx] = random.uniform(1, 5000)
+            features[sjit_idx] = random.uniform(100, 10000)
+            features[djit_idx] = random.uniform(100, 10000)
+            features[swin_idx] = random.uniform(0, 65535)
+            features[dwin_idx] = random.uniform(0, 65535)
+            features[smean_idx] = random.uniform(10, 10000)
+            features[dmean_idx] = random.uniform(0, 10000)
+            features[ct_srv_src_idx] = random.uniform(50, 500)  # MANY connections
+            features[ct_src_dport_ltm_idx] = random.uniform(20, 500)  # Many ports
+            
+        elif attack_type == 'Exploits':
+            # Exploits: Emphasis on specific patterns, response handling
+            features[dur_idx] = random.uniform(1, 600)
+            features[proto_idx] = random.choice([6, 17])
+            features[service_idx] = random.uniform(0, 14)
+            features[state_idx] = random.choice([5, 12, 15])  # ACK, EST, TIME_WAIT
+            features[spkts_idx] = random.uniform(5, 1000)
+            features[dpkts_idx] = random.uniform(5, 1000)
+            features[sbytes_idx] = random.uniform(100, 500000)
+            features[dbytes_idx] = random.uniform(100, 500000)
+            features[rate_idx] = random.uniform(100, 5000)
+            features[sttl_idx] = random.uniform(1, 128)
+            features[dttl_idx] = random.uniform(1, 128)
+            features[sload_idx] = random.uniform(100, 50000)
+            features[dload_idx] = random.uniform(100, 50000)
+            features[sloss_idx] = random.uniform(0, 0.3)
+            features[dloss_idx] = random.uniform(0, 0.3)
+            features[sintpkt_idx] = random.uniform(1, 2000)
+            features[dintpkt_idx] = random.uniform(1, 2000)
+            features[sjit_idx] = random.uniform(0, 5000)
+            features[djit_idx] = random.uniform(0, 5000)
+            features[swin_idx] = random.uniform(0, 65535)
+            features[dwin_idx] = random.uniform(0, 65535)
+            features[tcprtt_idx] = random.uniform(0, 10000)
+            features[smean_idx] = random.uniform(100, 100000)
+            features[dmean_idx] = random.uniform(100, 100000)
+            features[trans_depth_idx] = random.uniform(0, 50)
+            features[response_body_len_idx] = random.uniform(0, 1000000)
+            features[ct_srv_src_idx] = random.uniform(1, 100)
+            
+        elif attack_type == 'Backdoor':
+            # Backdoor: Emphasis on persistence, established connections
+            features[dur_idx] = random.uniform(60, 10000)  # LONG duration
+            features[proto_idx] = random.choice([6, 17])
+            features[service_idx] = random.uniform(0, 14)
+            features[state_idx] = 12  # ESTABLISHED
+            features[spkts_idx] = random.uniform(10, 5000)
+            features[dpkts_idx] = random.uniform(10, 5000)
+            features[sbytes_idx] = random.uniform(1000, 1000000)
+            features[dbytes_idx] = random.uniform(1000, 1000000)
+            features[rate_idx] = random.uniform(10, 5000)
+            features[sttl_idx] = random.uniform(1, 128)
+            features[dttl_idx] = random.uniform(1, 128)
+            features[sload_idx] = random.uniform(100, 100000)
+            features[dload_idx] = random.uniform(100, 100000)
+            features[sloss_idx] = random.uniform(0, 0.1)
+            features[dloss_idx] = random.uniform(0, 0.1)
+            features[sintpkt_idx] = random.uniform(100, 5000)
+            features[dintpkt_idx] = random.uniform(100, 5000)
+            features[sjit_idx] = random.uniform(10, 5000)
+            features[djit_idx] = random.uniform(10, 5000)
+            features[swin_idx] = random.uniform(0, 65535)
+            features[dwin_idx] = random.uniform(0, 65535)
+            features[tcprtt_idx] = random.uniform(1, 10000)
+            features[smean_idx] = random.uniform(1000, 100000)
+            features[dmean_idx] = random.uniform(1000, 100000)
+            features[ct_srv_src_idx] = random.uniform(1, 50)
+            
+        else:  # Benign
+            # Normal traffic - balanced features
+            features[dur_idx] = random.uniform(0.1, 300)
+            features[proto_idx] = random.choice([6, 17])
+            features[service_idx] = random.choice([5, 6, 9])  # DNS, HTTP, HTTPS mostly
+            features[state_idx] = 12  # ESTABLISHED
+            features[spkts_idx] = random.uniform(1, 500)
+            features[dpkts_idx] = random.uniform(1, 500)
+            features[sbytes_idx] = random.uniform(10, 100000)
+            features[dbytes_idx] = random.uniform(10, 100000)
+            features[rate_idx] = random.uniform(1, 1000)
+            features[sttl_idx] = random.uniform(1, 128)
+            features[dttl_idx] = random.uniform(1, 128)
+            features[sload_idx] = random.uniform(10, 5000)
+            features[dload_idx] = random.uniform(10, 5000)
+            features[sloss_idx] = 0
+            features[dloss_idx] = 0
+            features[sintpkt_idx] = random.uniform(100, 5000)
+            features[dintpkt_idx] = random.uniform(100, 5000)
+            features[sjit_idx] = random.uniform(10, 1000)
+            features[djit_idx] = random.uniform(10, 1000)
+            features[swin_idx] = random.uniform(512, 65535)
+            features[dwin_idx] = random.uniform(512, 65535)
+            features[smean_idx] = random.uniform(100, 10000)
+            features[dmean_idx] = random.uniform(100, 10000)
+            features[ct_srv_src_idx] = random.uniform(1, 50)
+        
+        return features.reshape(1, -1)
+    
+    def _generate_packets(self):
+        """Generate simulated packets with ML predictions"""
+        import random
+        import numpy as np
+        
+        attack_type_choices = ['DoS', 'Reconnaissance', 'Exploits', 'Backdoor']
+        
+        while self.is_running:
+            time.sleep(random.uniform(0.5, 2.0))  # 0.5-2 second intervals
+            
+            # Generate random network flow info
+            src_ip = f"192.168.1.{random.randint(1, 254)}"
+            dst_ip = f"10.0.0.{random.randint(1, 254)}"
+            src_port = random.randint(1024, 65535)
+            dst_port = random.choice([22, 80, 443, 445, 3389, 8080, 3306])
+            
+            # 25% chance of attack
+            is_attack = random.random() < 0.25
+            
+            if is_attack:
+                attack_type = random.choice(attack_type_choices)
+            else:
+                attack_type = 'Benign'
+            
+            # Generate realistic features based on attack type
+            features = self._generate_attack_features(attack_type)
+            
+            # Get actual ML prediction
+            prediction_result = self.ml_predictor.predict(
+                features,
+                flow_info={
+                    'src_ip': src_ip,
+                    'dst_ip': dst_ip,
+                    'src_port': src_port,
+                    'dst_port': dst_port,
+                    'protocol': 'TCP'
+                }
+            )
+            
+            if prediction_result:
+                self.packet_count += 1
+                
+                # Call callback for any prediction (including benign for monitoring)
+                if self.callback:
+                    self.callback(prediction_result)
